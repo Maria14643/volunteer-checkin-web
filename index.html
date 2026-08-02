@@ -1,0 +1,149 @@
+ <!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>中元超薦義工報到系統</title>
+  <style>
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: #f4f6f8; margin: 0; padding: 16px; display: flex; justify-content: center; }
+    .container { max-width: 500px; width: 100%; background: #ffffff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+    h2 { text-align: center; color: #1a365d; margin-top: 0; margin-bottom: 16px; font-size: 20px; }
+    .search-box { display: flex; gap: 8px; margin-bottom: 16px; }
+    input[type="text"] { flex: 1; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 16px; outline: none; }
+    button { padding: 12px 18px; background-color: #2563eb; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; }
+    button:disabled { background-color: #94a3b8; cursor: not-allowed; }
+    .result-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+    .result-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .name { font-size: 18px; font-weight: bold; color: #0f172a; }
+    .seq { font-size: 12px; color: #64748b; background: #e2e8f0; padding: 2px 6px; border-radius: 4px; }
+    .info-row { font-size: 14px; color: #475569; margin-bottom: 4px; }
+    .status { padding: 4px 8px; border-radius: 6px; font-size: 13px; font-weight: bold; }
+    .status.uncheck { background: #fee2e2; color: #991b1b; }
+    .status.checked { background: #dcfce7; color: #166534; }
+    .btn-checkin { margin-top: 12px; width: 100%; background-color: #16a34a; }
+    
+    /* 頁面內的測試日誌框 (除錯用) */
+    #debugBox { margin-top: 20px; padding: 10px; background: #1e293b; color: #38bdf8; font-family: monospace; font-size: 12px; border-radius: 6px; max-height: 150px; overflow-y: auto; display: none; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h2>中元超薦義工報到系統</h2>
+  
+  <div class="search-box">
+    <input type="text" id="keyword" placeholder="輸入姓名或手機號碼">
+    <button type="button" id="searchBtn">搜尋</button>
+  </div>
+
+  <div id="statusMsg" style="text-align: center; color: #64748b; margin: 10px 0;"></div>
+  <div id="resultList"></div>
+
+  <!-- 除錯視窗 -->
+  <div id="debugBox"></div>
+</div>
+
+<script>
+  // ⚠️⚠️ 請記得替換下方網址 ⚠️⚠️
+  const API_URL = "https://script.google.com/macros/s/AKfycbzvvzyyS-AdCXO10G9L1CQfmwuncPsmDkBs3i2cDhUmzdumwyl8WcSUDMEPj4QBw2Xf/exec";
+
+  function logDebug(msg) {
+    const box = document.getElementById('debugBox');
+    box.style.display = 'block';
+    box.innerHTML += `<div>> ${msg}</div>`;
+    box.scrollTop = box.scrollHeight;
+  }
+
+  // 綁定事件
+  document.getElementById('searchBtn').addEventListener('click', searchVolunteer);
+  document.getElementById('keyword').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') searchVolunteer();
+  });
+
+  function searchVolunteer() {
+    const keyword = document.getElementById('keyword').value.trim();
+    if (!keyword) {
+      alert("請輸入關鍵字！");
+      return;
+    }
+
+    const statusMsg = document.getElementById('statusMsg');
+    const resultList = document.getElementById('resultList');
+    
+    statusMsg.innerText = "搜尋中，請稍候...";
+    resultList.innerHTML = '';
+    logDebug("開始搜尋：" + keyword);
+
+    // 發送請求
+    const targetUrl = API_URL + "?action=search&keyword=" + encodeURIComponent(keyword);
+    logDebug("請求網址：" + targetUrl);
+
+    fetch(targetUrl, { redirect: 'follow' })
+      .then(response => {
+        logDebug("收到回應，狀態碼：" + response.status);
+        return response.json();
+      })
+      .then(res => {
+        logDebug("成功解析 JSON：" + JSON.stringify(res));
+        statusMsg.innerText = "";
+
+        if (res.success && res.data && res.data.length > 0) {
+          res.data.forEach(item => {
+            const isChecked = item.status === "已報到";
+            const card = document.createElement('div');
+            card.className = 'result-card';
+            card.innerHTML = `
+              <div class="result-header">
+                <span class="name">${item.name} <span class="seq">${item.seq}</span></span>
+                <span class="status ${isChecked ? 'checked' : 'uncheck'}">${item.status}</span>
+              </div>
+              <div class="info-row"><b>組別：</b>${item.group}</div>
+              <div class="info-row"><b>電話：</b>${item.phone}</div>
+              ${item.checkinTime ? `<div class="info-row"><b>報到時間：</b>${item.checkinTime}</div>` : ''}
+              <button class="btn-checkin" ${isChecked ? 'disabled' : ''} onclick="doCheckin(${item.row}, this)">
+                ${isChecked ? '已完成報到' : '點擊確認報到'}
+              </button>
+            `;
+            resultList.appendChild(card);
+          });
+        } else {
+          resultList.innerHTML = '<div style="text-align:center; color:#94a3b8; padding:20px;">查無符合條件的義工資料</div>';
+        }
+      })
+      .catch(err => {
+        statusMsg.innerText = "連線失敗";
+        logDebug("錯誤訊息：" + err.message);
+        alert("搜尋失敗！請檢查 API 網址是否正確。");
+      });
+  }
+
+  function doCheckin(row, btn) {
+    btn.disabled = true;
+    btn.innerText = "處理中...";
+    logDebug("準備報到 Row：" + row);
+
+    const targetUrl = API_URL + "?action=checkin&row=" + row;
+    fetch(targetUrl, { redirect: 'follow' })
+      .then(response => response.json())
+      .then(res => {
+        if (res.success) {
+          alert("🎉 報到成功！");
+          searchVolunteer();
+        } else {
+          alert("報到失敗：" + res.message);
+          btn.disabled = false;
+          btn.innerText = "點擊確認報到";
+        }
+      })
+      .catch(err => {
+        alert("報到失敗，連線異常");
+        logDebug("報到錯誤：" + err.message);
+        btn.disabled = false;
+        btn.innerText = "點擊確認報到";
+      });
+  }
+</script>
+
+</body>
+</html>
